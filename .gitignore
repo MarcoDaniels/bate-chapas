@@ -1,0 +1,15 @@
+.idea
+
+debug/
+target/
+
+**/*.rs.bk
+
+# ignore chapas content
+chapas/config/*
+chapas/source/*
+chapas/status/*
+# but keep the structure
+!chapas/config/.gitkeep
+!chapas/source/.gitkeep
+!chapas/status/.gitkeep
