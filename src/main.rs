@@ -1,11 +1,11 @@
+mod chapas;
+
 use actix_web::{error, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
+use chapas::{Config, Status};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::process::Command;
 
-// const CHAPA_CONFIG: &str = "chapas/config";
 const CHAPA_SOURCE: &str = "chapas/source";
-const CHAPA_STATUS: &str = "chapas/status";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Project {
@@ -13,14 +13,21 @@ struct Project {
     folder: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Status {
-    status: String,
-}
+async fn install(config: web::Json<Config>) -> HttpResponse {
+    match serde_json::to_string(&config.0) {
+        Ok(configuration) => match Config::write(String::from(&config.name), configuration) {
+            Ok(_) => HttpResponse::Ok().json(Status {
+                status: String::from(format!("installing {}", String::from(&config.name))),
+            }),
+            Err(error) => HttpResponse::BadRequest().json(Status {
+                status: String::from(format!("error: {}", error.to_string())),
+            }),
+        },
 
-fn update_status_file(data: String, project: Project) {
-    fs::write(format!("{}/{}.txt", CHAPA_STATUS, project.name), data)
-        .expect(&*format!("Could not update status for {}", project.name))
+        Err(error) => HttpResponse::BadRequest().json(Status {
+            status: String::from(format!("error {}", error.to_string())),
+        }),
+    }
 }
 
 async fn build(project: web::Json<Project>) -> HttpResponse {
@@ -33,13 +40,17 @@ async fn build(project: web::Json<Project>) -> HttpResponse {
         .spawn()
         .expect("build failed");
 
-    update_status_file(String::from("it is building"), project.0);
+    // TODO: handle errors properly
+    Status::write(
+        String::from("it is building"),
+        serde_json::to_string(&project.0).expect("this error should be handled"),
+    )
+    .expect("nope");
 
     HttpResponse::Ok().json(Status {
         status: String::from("building..."),
     })
 }
-
 
 async fn status(name: web::Path<String>) -> HttpResponse {
     HttpResponse::Ok().json(Status {
@@ -52,9 +63,9 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
             .wrap(middleware::Logger::default())
-            // .route("/install", web::post().to(install))
+            .route("/install", web::post().to(install))
             .route("/build", web::post().to(build))
-            .route("/status/{name}",web::get().to(status))
+            .route("/status/{name}", web::get().to(status))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
     })
     .bind(("127.0.0.1", 8080))?
