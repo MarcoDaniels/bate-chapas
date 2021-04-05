@@ -1,11 +1,9 @@
 mod chapas;
 
+use crate::chapas::Source;
 use actix_web::{error, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
 use chapas::{Config, Status};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
-
-const CHAPA_SOURCE: &str = "chapas/source";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Project {
@@ -14,18 +12,31 @@ struct Project {
 }
 
 async fn install(config: web::Json<Config>) -> HttpResponse {
-    match serde_json::to_string(&config.0) {
-        Ok(configuration) => match Config::write(String::from(&config.name), configuration) {
-            Ok(_) => HttpResponse::Ok().json(Status {
-                status: String::from(format!("installing {}", String::from(&config.name))),
-            }),
-            Err(error) => HttpResponse::BadRequest().json(Status {
-                status: String::from(format!("error: {}", error.to_string())),
+    match serde_json::to_string_pretty(&config.0) {
+        Ok(contents) => match Config::write(&config, contents) {
+            Ok(_) => {
+                Status::write(&config, String::from("installing")).ok();
+
+                // TODO: update status file on each step
+                match Source::install(&config) {
+                    Ok(_) => {
+                        Source::init(&config).expect("something went wrong");
+                        ()
+                    },
+                    Err(_) => ()
+                }
+
+                HttpResponse::Ok().json(Status {
+                    message: String::from(format!("installing {}", String::from(&config.name))),
+                })
+            }
+            Err(err) => HttpResponse::BadRequest().json(Status {
+                message: err.to_string(),
             }),
         },
 
-        Err(error) => HttpResponse::BadRequest().json(Status {
-            status: String::from(format!("error {}", error.to_string())),
+        Err(err) => HttpResponse::BadRequest().json(Status {
+            message: err.to_string(),
         }),
     }
 }
@@ -33,28 +44,31 @@ async fn install(config: web::Json<Config>) -> HttpResponse {
 async fn build(project: web::Json<Project>) -> HttpResponse {
     println!("project input: {:?}", &project);
 
+    /*
     Command::new("node")
         // TODO: can we predict error?
         .current_dir(format!("{}/{}", CHAPA_SOURCE, project.0.name))
         .arg("index.js")
         .spawn()
         .expect("build failed");
-
+    */
     // TODO: handle errors properly
+    /*
     Status::write(
         String::from("it is building"),
         serde_json::to_string(&project.0).expect("this error should be handled"),
     )
     .expect("nope");
+     */
 
     HttpResponse::Ok().json(Status {
-        status: String::from("building..."),
+        message: String::from("building..."),
     })
 }
 
 async fn status(name: web::Path<String>) -> HttpResponse {
     HttpResponse::Ok().json(Status {
-        status: String::from(format!("read status for {} from status file ", name.0)),
+        message: String::from(format!("read status for {} from status file ", name.0)),
     })
 }
 
