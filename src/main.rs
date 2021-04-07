@@ -1,8 +1,9 @@
 mod chapas;
+mod response;
 
-use crate::chapas::Source;
 use actix_web::{error, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
-use chapas::{Config, Status};
+use chapas::{Config, Status, Source};
+use response::{Response};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,29 +16,22 @@ async fn install(config: web::Json<Config>) -> HttpResponse {
     match serde_json::to_string_pretty(&config.0) {
         Ok(contents) => match Config::write(&config, contents) {
             Ok(_) => {
-                Status::write(&config, String::from("installing")).ok();
+                Status::write(&config, "installing");
 
-                // TODO: update status file on each step
                 match Source::install(&config) {
                     Ok(_) => {
+                        Status::write(&config, "installed");
                         Source::init(&config).expect("something went wrong");
                         ()
-                    },
+                    }
                     Err(_) => ()
                 }
 
-                HttpResponse::Ok().json(Status {
-                    message: String::from(format!("installing {}", String::from(&config.name))),
-                })
+                Response::success(format!("installed {}", String::from(&config.name)))
             }
-            Err(err) => HttpResponse::BadRequest().json(Status {
-                message: err.to_string(),
-            }),
+            Err(err) => Response::error(err.to_string())
         },
-
-        Err(err) => HttpResponse::BadRequest().json(Status {
-            message: err.to_string(),
-        }),
+        Err(err) => Response::error(err.to_string()),
     }
 }
 
@@ -61,15 +55,11 @@ async fn build(project: web::Json<Project>) -> HttpResponse {
     .expect("nope");
      */
 
-    HttpResponse::Ok().json(Status {
-        message: String::from("building..."),
-    })
+    Response::success(format!("building.."))
 }
 
 async fn status(name: web::Path<String>) -> HttpResponse {
-    HttpResponse::Ok().json(Status {
-        message: String::from(format!("read status for {} from status file ", name.0)),
-    })
+    Response::success(format!("read status for {} from status file ", name.0))
 }
 
 #[actix_web::main]
@@ -82,9 +72,9 @@ async fn main() -> std::io::Result<()> {
             .route("/status/{name}", web::get().to(status))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
     })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
+        .bind(("127.0.0.1", 8080))?
+        .run()
+        .await
 }
 
 fn json_error_handler(err: error::JsonPayloadError, _req: &HttpRequest) -> error::Error {

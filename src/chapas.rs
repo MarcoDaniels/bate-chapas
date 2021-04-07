@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::process::{Child, Command};
+use std::{fs};
+use std::process::{Child, Command, Output};
+use std::path::Path;
+use std::io::{Error, ErrorKind};
 
 const CHAPA_CONFIG: &str = "chapas/config";
 const CHAPA_SOURCE: &str = "chapas/source";
@@ -28,8 +30,13 @@ pub struct Config {
 
 impl Config {
     pub fn write(config: &Config, contents: String) -> std::io::Result<()> {
-        // TODO: check if it exists already and throw error
-        fs::write(format!("{}/{}.json", CHAPA_CONFIG, config.name), contents)
+        let path = format!("{}/{}.json", CHAPA_CONFIG, config.name);
+
+        if Path::new(path.as_str()).exists() {
+            Result::Err(Error::from(ErrorKind::AlreadyExists))
+        } else {
+            fs::write(path, contents)
+        }
     }
 }
 
@@ -37,12 +44,12 @@ impl Config {
 pub struct Source;
 
 impl Source {
-    pub fn install(config: &Config) -> std::io::Result<Child> {
+    pub fn install(config: &Config) -> std::io::Result<Output> {
         Command::new("git")
             .current_dir(CHAPA_SOURCE)
             .arg("clone")
             .arg(&config.code)
-            .spawn()
+            .output()
     }
 
     pub fn init(config: &Config) -> std::io::Result<Child> {
@@ -61,7 +68,7 @@ pub struct Status {
 }
 
 impl Status {
-    pub fn write(config: &Config, contents: String) -> std::io::Result<()> {
-        fs::write(format!("{}/{}.txt", CHAPA_STATUS, config.name), contents)
+    pub fn write(config: &Config, contents: &str) -> Option<()> {
+        fs::write(format!("{}/{}.txt", CHAPA_STATUS, config.name), contents).ok()
     }
 }
