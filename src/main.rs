@@ -1,16 +1,7 @@
 mod chapas;
-mod response;
 
 use actix_web::{error, middleware, web, App, HttpRequest, HttpResponse, HttpServer};
-use chapas::{Config, Status, Source};
-use response::{Response};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Project {
-    name: String,
-    folder: String,
-}
+use chapas::{Config, Source, Status};
 
 async fn install(config: web::Json<Config>) -> HttpResponse {
     match serde_json::to_string_pretty(&config.0) {
@@ -22,44 +13,45 @@ async fn install(config: web::Json<Config>) -> HttpResponse {
                     Ok(_) => {
                         Status::write(&config, "installed");
                         Source::init(&config).expect("something went wrong");
-                        ()
-                    }
-                    Err(_) => ()
-                }
 
-                Response::success(format!("installed {}", String::from(&config.name)))
+                        HttpResponse::Ok().json(Status {
+                            message: format!("installed {}", String::from(&config.name)),
+                        })
+                    }
+                    Err(err) => HttpResponse::NotAcceptable().json(Status {
+                        message: err.to_string(),
+                    })
+                }
             }
-            Err(err) => Response::error(err.to_string())
+            Err(err) => HttpResponse::NotAcceptable().json(Status {
+                message: err.to_string(),
+            })
         },
-        Err(err) => Response::error(err.to_string()),
+        Err(err) => HttpResponse::BadRequest().json(Status {
+            message: err.to_string(),
+        })
     }
 }
 
-async fn build(project: web::Json<Project>) -> HttpResponse {
-    println!("project input: {:?}", &project);
+async fn run(name: web::Path<String>) -> HttpResponse {
+    match Config::read(&name.0) {
+        Ok(contents) => {
+            Source::run(&contents);
 
-    /*
-    Command::new("node")
-        // TODO: can we predict error?
-        .current_dir(format!("{}/{}", CHAPA_SOURCE, project.0.name))
-        .arg("index.js")
-        .spawn()
-        .expect("build failed");
-    */
-    // TODO: handle errors properly
-    /*
-    Status::write(
-        String::from("it is building"),
-        serde_json::to_string(&project.0).expect("this error should be handled"),
-    )
-    .expect("nope");
-     */
-
-    Response::success(format!("building.."))
+            HttpResponse::Ok().json(Status {
+                message: format!("run script for {}", &contents.name),
+            })
+        }
+        Err(_) => HttpResponse::NotFound().json(Status {
+            message: format!("no configuration found for {}", name)
+        }),
+    }
 }
 
 async fn status(name: web::Path<String>) -> HttpResponse {
-    Response::success(format!("read status for {} from status file ", name.0))
+    HttpResponse::Ok().json(Status {
+        message: format!("read status for {} from status file ", name.0),
+    })
 }
 
 #[actix_web::main]
@@ -68,7 +60,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(middleware::Logger::default())
             .route("/install", web::post().to(install))
-            .route("/build", web::post().to(build))
+            .route("/run/{name}", web::post().to(run))
             .route("/status/{name}", web::get().to(status))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
     })

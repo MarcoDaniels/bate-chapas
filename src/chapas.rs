@@ -1,18 +1,12 @@
+use serde::ser::Error;
 use serde::{Deserialize, Serialize};
-use std::{fs};
-use std::process::{Child, Command, Output};
+use std::fs;
 use std::path::Path;
-use std::io::{Error, ErrorKind};
+use std::process::{Child, Command, Output};
 
 const CHAPA_CONFIG: &str = "chapas/config";
 const CHAPA_SOURCE: &str = "chapas/source";
 const CHAPA_STATUS: &str = "chapas/status";
-
-#[derive(Serialize, Deserialize)]
-pub struct Process {
-    command: String,
-    arg: Option<String>,
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct Environment {
@@ -20,12 +14,19 @@ pub struct Environment {
     value: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Process {
+    command: String,
+    args: Option<Vec<String>>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub name: String,
     code: String,
-    environment: Option<Vec<Environment>>,
     init: Option<Process>,
+    run: Option<Process>,
+    environment: Option<Vec<Environment>>,
 }
 
 impl Config {
@@ -33,9 +34,18 @@ impl Config {
         let path = format!("{}/{}.json", CHAPA_CONFIG, config.name);
 
         if Path::new(path.as_str()).exists() {
-            Result::Err(Error::from(ErrorKind::AlreadyExists))
+            Result::Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists))
         } else {
             fs::write(path, contents)
+        }
+    }
+
+    pub fn read(name: &String) -> serde_json::Result<Config> {
+        let path = format!("{}/{}.json", CHAPA_CONFIG, name);
+
+        match fs::File::open(path) {
+            Ok(file) => serde_json::from_reader(file),
+            Err(err) => serde_json::Result::Err(serde_json::error::Error::custom(err)),
         }
     }
 }
@@ -55,10 +65,17 @@ impl Source {
     pub fn init(config: &Config) -> std::io::Result<Child> {
         match &config.init {
             Some(init) => Command::new(&init.command)
+                // TODO: use args
+                // .args()
                 .current_dir(format!("{}/{}", CHAPA_SOURCE, config.name))
                 .spawn(),
             None => Command::new("echo").arg("no init").spawn(),
         }
+    }
+
+    pub fn run(config: &Config) -> &'static str {
+        println!("{:?}", config.run);
+        "something"
     }
 }
 
