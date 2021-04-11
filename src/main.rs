@@ -20,30 +20,33 @@ async fn install(config: web::Json<Config>) -> HttpResponse {
                     }
                     Err(err) => HttpResponse::NotAcceptable().json(Status {
                         message: err.to_string(),
-                    })
+                    }),
                 }
             }
             Err(err) => HttpResponse::NotAcceptable().json(Status {
                 message: err.to_string(),
-            })
+            }),
         },
         Err(err) => HttpResponse::BadRequest().json(Status {
             message: err.to_string(),
-        })
+        }),
     }
 }
 
 async fn run(name: web::Path<String>) -> HttpResponse {
     match Config::read(&name.0) {
         Ok(contents) => {
-            Source::run(&contents);
+            match Source::run(&contents) {
+                Ok(_) => println!("it runs"),
+                Err(err) => println!("it does not run: {}", err.to_string()),
+            }
 
             HttpResponse::Ok().json(Status {
                 message: format!("run script for {}", &contents.name),
             })
         }
         Err(_) => HttpResponse::NotFound().json(Status {
-            message: format!("no configuration found for {}", name)
+            message: format!("no configuration found for {}", name),
         }),
     }
 }
@@ -64,9 +67,9 @@ async fn main() -> std::io::Result<()> {
             .route("/status/{name}", web::get().to(status))
             .app_data(web::JsonConfig::default().error_handler(json_error_handler))
     })
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
 
 fn json_error_handler(err: error::JsonPayloadError, _req: &HttpRequest) -> error::Error {

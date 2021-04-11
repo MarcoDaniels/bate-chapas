@@ -1,5 +1,6 @@
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::process::{Child, Command, Output};
@@ -25,8 +26,8 @@ pub struct Config {
     pub name: String,
     code: String,
     init: Option<Process>,
-    run: Option<Process>,
-    environment: Option<Vec<Environment>>,
+    run: Process,
+    environment: Vec<Environment>,
 }
 
 impl Config {
@@ -65,17 +66,37 @@ impl Source {
     pub fn init(config: &Config) -> std::io::Result<Child> {
         match &config.init {
             Some(init) => Command::new(&init.command)
-                // TODO: use args
-                // .args()
+                .args(
+                    match &init.args {
+                        Some(args) => args.to_owned(),
+                        None => [].to_vec(),
+                    }
+                    .into_iter(),
+                )
                 .current_dir(format!("{}/{}", CHAPA_SOURCE, config.name))
                 .spawn(),
             None => Command::new("echo").arg("no init").spawn(),
         }
     }
 
-    pub fn run(config: &Config) -> &'static str {
-        println!("{:?}", config.run);
-        "something"
+    pub fn run(config: &Config) -> std::io::Result<Child> {
+        let a: HashMap<String, String> = config
+            .environment
+            .iter()
+            .map(|x| (String::from(&x.key), String::from(env!(&x.value))))
+            .collect();
+
+        Command::new(&config.run.command)
+            .args(
+                match &config.run.args {
+                    Some(args) => args.to_owned(),
+                    None => [].to_vec(),
+                }
+                .into_iter(),
+            )
+            .envs(a)
+            .current_dir(format!("{}/{}", CHAPA_SOURCE, config.name))
+            .spawn()
     }
 }
 
